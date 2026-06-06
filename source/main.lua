@@ -11,6 +11,17 @@ local aim = 0
 
 BRICK = 16
 
+-- screen
+
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 240
+
+local screenBorder = { top = 30, bottom = 20, left = 20, right = 20 }
+
+-- wall
+
+local wallSize = 10
+
 -- ball
 
 local ballDirection = { x = 1, y = -1 }
@@ -22,6 +33,11 @@ local ballSpeedCurrent = ballSpeedMin
 local ballSpeedIncreaseOnHit = 0.5
 
 -- paddle
+--
+local paddleInitialPosition = {
+	x = SCREEN_WIDTH / 2,
+	y = SCREEN_HEIGHT - screenBorder.bottom,
+}
 
 local paddleWidthBricks = 4
 
@@ -31,13 +47,30 @@ local paddleSpeedCurrent = paddleSpeedMin
 local paddleMaxSpeedTimeMillis = 500
 local paddleLastPressedTime = 0
 
-function createBrick(x, y, w, h)
-	local img = gfx.image.new("images/brick01")
+-- UI
+
+local score = 1
+local highscore = 1
+local currentLevel = 1
+local lives = 3
+
+-- levels
+local levels = import("levels")
+
+local bricksLeft = 0
+
+function createBrick(x, y, size, strength)
+	local img = gfx.image.new("images/brick0" .. size)
 	local brick = gfx.sprite.new(img)
 	brick:add()
 
-	brick:setCollideRect(0, 0, w, h)
+	brick:setCollideRect(0, 0, size * BRICK, BRICK)
 	brick:moveTo(x, y)
+	brick.life = strength
+	brick.type = "brick"
+
+	bricksLeft = bricksLeft + 1
+	print("Bricks: " .. bricksLeft)
 
 	return brick
 end
@@ -53,6 +86,10 @@ function createWall(x, y, w, h)
 	wall:setCollideRect(0, 0, w, h)
 	wall:moveTo(x, y)
 	wall:add()
+
+	wall.type = "wall"
+
+	return wall
 end
 
 function createBall()
@@ -61,18 +98,22 @@ function createBall()
 	ball:add()
 
 	ball:moveTo(100, 100)
-	ball:setCollideRect(0, 0, 16, 16)
+	ball:setCollideRect(0, 0, BRICK, BRICK)
 
+	ball.type = "ball"
 	return ball
 end
 
-function createPaddle(x, y)
+function createPaddle()
 	local img = gfx.image.new("images/paddle" .. paddleWidthBricks)
 	local paddle = gfx.sprite.new(img)
 	paddle:add()
-	paddle:moveTo(x, y)
+	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
 
 	paddle:setCollideRect(0, 0, paddleWidthBricks * BRICK, BRICK)
+
+	paddle.type = "paddle"
+
 	return paddle
 end
 
@@ -84,6 +125,63 @@ function drawAim()
 
 	gfx.drawLine(px, py, px + x, py + y)
 end
+
+-- LOAD
+
+function loadLevel()
+	local level = levels[currentLevel]
+
+	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
+	ball:moveTo(paddleInitialPosition.x, paddleInitialPosition.y - 2 * BRICK)
+
+	for y, row in ipairs(level) do
+		local brickPosX = 0
+		local brickSize = 0
+		local brickStrength = 0
+
+		for x = 1, #row do
+			local tile = row:sub(x, x)
+			if tile == "1" then
+				brickSize = brickSize + 1
+				brickStrength = 1
+			elseif tile == "_" then
+				if brickSize > 0 then
+					createBrick(
+						screenBorder.left + brickPosX * BRICK,
+						screenBorder.top + y * BRICK,
+						brickSize,
+						brickStrength
+					)
+				end
+				brickSize = 0
+				brickPosX = x
+				brickStrength = 0
+			elseif tile == "." then
+				if brickSize > 0 then
+					createBrick(
+						screenBorder.left + brickPosX * BRICK,
+						screenBorder.top + y * BRICK,
+						brickSize,
+						brickStrength
+					)
+				end
+				brickSize = 0
+				brickPosX = x - 1
+				brickStrength = 0
+			end
+		end
+	end
+end
+
+function drawUi()
+	local uiLineY = 3
+	gfx.drawText(currentLevel, 50, uiLineY)
+	gfx.drawText(lives, 150, uiLineY + 5)
+	gfx.drawText(score, 250, uiLineY)
+	gfx.drawText(highscore, 350, uiLineY + 5)
+end
+
+-- UPDATE
 
 function updateBall()
 	local dx = ballDirection.x * ballSpeedCurrent
@@ -102,8 +200,31 @@ function updateBall()
 			ballDirection.y = c.normal.y
 		end
 
-		if c.other == paddle then
+		if c.other.type == "paddle" then
 			ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncreaseOnHit, ballSpeedMin, ballSpeedMax)
+		elseif c.other.type == "brick" then
+			hitBrick(c.other)
+		end
+	end
+end
+
+function hitBrick(brick)
+	brick.life = brick.life - 1
+	if brick.life == 0 then
+		brick:remove()
+		bricksLeft = bricksLeft - 1
+
+		score = score + 1
+
+		if score > highscore then
+			highscore = score
+		end
+
+		print(bricksLeft)
+
+		if bricksLeft == 0 then
+			currentLevel = currentLevel + 1
+			loadLevel()
 		end
 	end
 end
@@ -144,14 +265,15 @@ function playdate.update()
 	gfx.sprite.update()
 
 	drawAim()
+
+	drawUi()
 end
 
-local wallLeft = createWall(0, 120, 10, 240)
-local wallRight = createWall(400, 120, 10, 240)
-local wallTop = createWall(200, 0, 400, 10)
-local wallBottom = createWall(200, 240, 400, 10)
+createWall(0, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
+createWall(SCREEN_WIDTH, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
+createWall(SCREEN_WIDTH / 2, screenBorder.top, SCREEN_WIDTH, wallSize)
+createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize)
 
-local brick = createBrick(10, 30, BRICK, BRICK)
-
-paddle = createPaddle(150, 220)
+paddle = createPaddle()
 ball = createBall()
+loadLevel()
