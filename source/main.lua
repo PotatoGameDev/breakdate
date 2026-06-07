@@ -26,11 +26,17 @@ local wallSize = 10
 
 local ballDirection = { x = 1, y = -1 }
 
-local ballSpeedMin = 1
-local ballSpeedMax = 4
+local ballSpeedMin = 3
+local ballSpeedMax = 10
+local ballSpeedIncrease = 0.3
 local ballSpeedCurrent = ballSpeedMin
+local ballSpeedBoost = 0
+local ballBoostPaddleSpeedMin = 5
+local ballSpeedBoostMax = 10
+local ballSpeedBoostMin = 0
+local ballSpeedBoostDecrease = 0.3
 
-local ballSpeedIncreaseOnHit = 0.5
+local ballPaddleAngleInfluenceFraction = 0.8
 
 -- paddle
 --
@@ -42,10 +48,8 @@ local paddleInitialPosition = {
 local paddleWidthBricks = 4
 
 local paddleSpeedMin = 1
-local paddleSpeedMax = 5
+local paddleSpeedMax = 20
 local paddleSpeedCurrent = paddleSpeedMin
-local paddleMaxSpeedTimeMillis = 500
-local paddleLastPressedTime = 0
 
 -- UI
 
@@ -187,24 +191,66 @@ end
 -- UPDATE
 
 function updateBall()
-	local dx = ballDirection.x * ballSpeedCurrent
-	local dy = ballDirection.y * ballSpeedCurrent
+	local dx = ballDirection.x * (ballSpeedCurrent + ballSpeedBoost)
+	local dy = ballDirection.y * (ballSpeedCurrent + ballSpeedBoost)
 
 	local bx, by = ball:getPosition()
 
 	local actualX, actualY, collisions = ball:moveWithCollisions(bx + dx, by + dy)
 
+	print("PRe " .. ballSpeedBoost)
+	ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
+
+	print("post " .. ballSpeedBoost)
+
 	if #collisions > 0 then
 		local c = collisions[1]
-		if c.normal.x ~= 0 then
-			ballDirection.x = c.normal.x
-		end
-		if c.normal.y ~= 0 then
-			ballDirection.y = c.normal.y
+		if c.other.type ~= "paddle" then
+			local dot = ballDirection.x * c.normal.x + ballDirection.y * c.normal.y
+
+			if dot ~= 0 then
+				ballDirection.x = ballDirection.x - 2 * dot * c.normal.x
+				ballDirection.y = ballDirection.y - 2 * dot * c.normal.y
+			end
 		end
 
 		if c.other.type == "paddle" then
-			ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncreaseOnHit, ballSpeedMin, ballSpeedMax)
+			local paddleSpeedAbs = math.abs(paddleSpeedCurrent)
+			if paddleSpeedAbs > ballBoostPaddleSpeedMin then
+				ballSpeedBoost = Util.lerp(0, ballSpeedBoostMax, paddleSpeedAbs / (paddleSpeedMax - paddleSpeedAbs))
+				print("PSpeed: " .. paddleSpeedAbs .. " boost: " .. ballSpeedBoost)
+			end
+
+			-- calculating new ball angle
+			px, _ = paddle:getPosition()
+
+			-- ball position relative to the paddle
+			local offset = bx - px
+			local half = (paddleWidthBricks * BRICK) / 2
+
+			local t = offset / half
+			t = Util.clamp(t, -1, 1)
+
+			local baseX = ballDirection.x
+			local baseY = ballDirection.y
+
+			local influence = t * ballPaddleAngleInfluenceFraction
+
+			local newX = baseX + influence
+
+			local len = math.sqrt(newX * newX + baseY * baseY)
+
+			ballDirection.x = newX / len
+			ballDirection.y = baseY / len
+
+			-- check if the ball goes up:
+			if ballDirection.y > -0.2 then
+				ballDirection.y = -0.2
+			end
+
+			local len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
+			ballDirection.x = ballDirection.x / len
+			ballDirection.y = ballDirection.y / len
 		elseif c.other.type == "brick" then
 			hitBrick(c.other)
 		end
@@ -223,50 +269,25 @@ function hitBrick(brick)
 			highscore = score
 		end
 
-		print(bricksLeft)
-
 		if bricksLeft == 0 then
 			currentLevel = currentLevel + 1
 			loadLevel()
 		end
+
+		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
 	end
 end
 
--- DEPRECATED, based on the left/right buttons
 function updatePaddle()
-	local pressed = false
-	local px, py = paddle:getPosition()
-	if playdate.buttonIsPressed(playdate.kButtonLeft) then
-		paddle:moveWithCollisions(px - paddleSpeedCurrent, py)
-		pressed = true
-	elseif playdate.buttonIsPressed(playdate.kButtonRight) then
-		paddle:moveWithCollisions(px + paddleSpeedCurrent, py)
-		pressed = true
-	else
-		paddleLastPressedTime = 0
-	end
-
-	if pressed then
-		if paddleLastPressedTime == 0 then
-			paddleLastPressedTime = playdate.getCurrentTimeMilliseconds()
-		else
-			local paddleTime = playdate.getCurrentTimeMilliseconds() - paddleLastPressedTime
-			paddleSpeedCurrent = Util.lerp(paddleSpeedMin, paddleSpeedMax, paddleTime / paddleMaxSpeedTimeMillis)
-		end
-	else
-		paddleSpeedCurrent = paddleSpeedMin
-	end
-end
-
-function updatePaddle2()
 	local crank = playdate.getCrankChange()
+	paddleSpeedCurrent = Util.clamp(crank, -paddleSpeedMax, paddleSpeedMax)
 	local px, py = paddle:getPosition()
 
-	paddle:moveWithCollisions(px + crank, py)
+	paddle:moveWithCollisions(px + paddleSpeedCurrent, py)
 end
 
 function playdate.update()
-	updatePaddle2()
+	updatePaddle()
 
 	updateBall()
 
