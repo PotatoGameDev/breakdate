@@ -110,13 +110,25 @@ end
 
 function createBall()
 	local img = gfx.image.new("images/ball")
-	local ball = gfx.sprite.new(img)
+	local ball = gfx.sprite.new()
+
 	ball:add()
 
 	ball:moveTo(100, 100)
 	ball:setCollideRect(0, 0, BRICK, BRICK)
+	ball:setSize(BRICK, BRICK)
 
 	ball.type = "ball"
+	ball.scale = { x = 1, y = 1 }
+
+	function ball:draw(x, y, w, h)
+		local cx, cy = w / 2, h / 2
+		local t = playdate.geometry.affineTransform.new()
+		t:translate(cx, cy)
+		t:scale(ball.scale.x, ball.scale.y)
+		img:drawWithTransform(t, 0, 0)
+	end
+
 	return ball
 end
 
@@ -222,6 +234,14 @@ function updateBall()
 	-- cooling down the speed boost
 	ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
 
+	ball:markDirty()
+	if ball.scale.x < 1 then
+		ball.scale.x = Util.lerp(ball.scale.x, 1, 0.5)
+	end
+	if ball.scale.y < 1 then
+		ball.scale.y = Util.lerp(ball.scale.y, 1, 0.5)
+	end
+
 	if #collisions > 0 then
 		local c = collisions[1]
 		if c.other.type ~= "paddle" then
@@ -232,6 +252,12 @@ function updateBall()
 				ballDirection.y = ballDirection.y - 2 * dot * c.normal.y
 			end
 		end
+
+		-- on all collisions:
+		ball.scale = {
+			x = c.normal.x ~= 0 and 0.5 or 1,
+			y = c.normal.y ~= 0 and 0.5 or 1,
+		}
 
 		if c.other.type == "paddle" then
 			local paddleSpeedAbs = math.abs(paddleSpeedCurrent)
@@ -272,7 +298,7 @@ function updateBall()
 				ballDirection.y = -0.2
 			end
 
-			local len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
+			len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
 			ballDirection.x = ballDirection.x / len
 			ballDirection.y = ballDirection.y / len
 
