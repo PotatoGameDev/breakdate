@@ -72,8 +72,8 @@ local brickOffsetX = 10
 local bricksLeft = 0
 
 function createBrick(x, y, size, strength)
-	local img = gfx.image.new("images/brick0" .. size)
-	local brokenImg = gfx.image.new("images/brickbroken0" .. size)
+	local img = gfx.image.new("images/brick0" .. size .. "_" .. strength)
+	local brokenImg = gfx.image.new("images/brickbroken0" .. size .. "_" .. strength)
 	local brick = gfx.sprite.new()
 	brick:setSize(size * BRICK, BRICK)
 	brick:add()
@@ -237,10 +237,10 @@ end
 
 function drawUi()
 	local uiLineY = 3
-	gfx.drawText(currentLevel, 50, uiLineY)
-	gfx.drawText(lifes, 150, uiLineY + 5)
-	gfx.drawText(score, 250, uiLineY)
-	gfx.drawText(highscore, 350, uiLineY + 5)
+	gfx.drawText("LEVEL: " .. currentLevel, 50, uiLineY)
+	gfx.drawText("LIFES: " .. lifes, 150, uiLineY + 5)
+	gfx.drawText("SCORE: " .. score, 250, uiLineY)
+	gfx.drawText("HI: " .. highscore, 350, uiLineY + 5)
 end
 
 -- UPDATE
@@ -364,7 +364,7 @@ function hitBrick(brick, direction, speed)
 		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
 	else
 		brick.broken = true
-		--brick:markDirty()
+		brick:markDirty()
 		brick.shake = {
 			x = -direction.x * speed,
 			y = -direction.y * speed,
