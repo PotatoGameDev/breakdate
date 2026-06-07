@@ -73,9 +73,9 @@ function createBrick(x, y, size, strength)
 	brick:moveTo(x, y)
 	brick.life = strength
 	brick.type = "brick"
+	brick.size = size
 
 	bricksLeft = bricksLeft + 1
-	print("Bricks: " .. bricksLeft)
 
 	return brick
 end
@@ -151,9 +151,9 @@ function loadLevel()
 
 		for x = 1, #row do
 			local tile = row:sub(x, x)
-			if tile == "1" then
+			if tile == "1" or tile == "2" then
 				brickSize = brickSize + 1
-				brickStrength = 1
+				brickStrength = tonumber(tile) or 1
 			elseif tile == "_" then
 				if brickSize > 0 then
 					createBrick(
@@ -288,6 +288,9 @@ function hitBrick(brick)
 		end
 
 		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
+	else
+		local newImage = gfx.image.new("images/brickbroken0" .. brick.size)
+		brick:setImage(newImage)
 	end
 end
 
