@@ -11,6 +11,10 @@ local aim = 0
 
 BRICK = 16
 
+-- logo
+
+local logo
+
 -- screen
 
 SCREEN_WIDTH = 400
@@ -166,6 +170,20 @@ function drawAim()
 end
 
 -- LOAD
+
+function showLogo()
+	local img = gfx.image.new("images/logo")
+	logo = gfx.sprite.new(img)
+
+	logo.type = "logo"
+	logo.frames = 90
+
+	local w, h = img:getSize()
+	logo:setSize(w, h)
+	logo:moveTo(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
+
+	logo:add()
+end
 
 function loadLevel()
 	if currentLevel > #levels then
@@ -401,6 +419,16 @@ function startGame()
 	loadLevel()
 end
 
+function createPersistentObjects()
+	createWall(0, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
+	createWall(SCREEN_WIDTH, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
+	createWall(SCREEN_WIDTH / 2, screenBorder.top, SCREEN_WIDTH, wallSize)
+	createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize, "floor")
+
+	paddle = createPaddle()
+	ball = createBall()
+end
+
 function updatePaddle()
 	local crank = playdate.getCrankChange()
 	-- crank will be -x to x
@@ -431,28 +459,32 @@ function updatePaddle()
 end
 
 function playdate.update()
-	updatePaddle()
+	if logo then
+		if logo.frames > 0 then
+			logo.frames = logo.frames - 1
+		else
+			logo:remove()
+			logo = nil
+			createPersistentObjects()
+			startGame()
+		end
+		gfx.sprite.update()
+	else
+		updatePaddle()
 
-	updateBall()
+		updateBall()
 
-	updateBricks()
+		updateBricks()
 
-	aim = aim + math.rad(playdate.getCrankChange())
-	aim = Util.clamp(aim, math.pi, math.pi * 2)
+		aim = aim + math.rad(playdate.getCrankChange())
+		aim = Util.clamp(aim, math.pi, math.pi * 2)
 
-	gfx.sprite.update()
+		gfx.sprite.update()
 
-	drawAim()
+		drawAim()
 
-	drawUi()
+		drawUi()
+	end
 end
 
-createWall(0, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
-createWall(SCREEN_WIDTH, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
-createWall(SCREEN_WIDTH / 2, screenBorder.top, SCREEN_WIDTH, wallSize)
-createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize, "floor")
-
-paddle = createPaddle()
-ball = createBall()
-
-startGame()
+showLogo()
