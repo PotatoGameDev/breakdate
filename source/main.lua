@@ -129,6 +129,9 @@ end
 -- LOAD
 
 function loadLevel()
+	if currentLevel > #levels then
+		currentLevel = 1
+	end
 	local level = levels[currentLevel]
 
 	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
@@ -229,6 +232,7 @@ function hitBrick(brick)
 	end
 end
 
+-- DEPRECATED, based on the left/right buttons
 function updatePaddle()
 	local pressed = false
 	local px, py = paddle:getPosition()
@@ -254,8 +258,15 @@ function updatePaddle()
 	end
 end
 
+function updatePaddle2()
+	local crank = playdate.getCrankChange()
+	local px, py = paddle:getPosition()
+
+	paddle:moveWithCollisions(px + crank, py)
+end
+
 function playdate.update()
-	updatePaddle()
+	updatePaddle2()
 
 	updateBall()
 
