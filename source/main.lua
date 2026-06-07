@@ -37,6 +37,7 @@ local ballSpeedBoostMin = 0
 local ballSpeedBoostDecrease = 0.3
 
 local ballPaddleAngleInfluenceFraction = 0.8
+local ballPaddleSpeedInfluenceFraction = 0.3
 
 -- paddle
 --
@@ -200,10 +201,8 @@ function updateBall()
 
 	local actualX, actualY, collisions = ball:moveWithCollisions(bx + dx, by + dy)
 
-	print("PRe " .. ballSpeedBoost)
+	-- cooling down the speed boost
 	ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
-
-	print("post " .. ballSpeedBoost)
 
 	if #collisions > 0 then
 		local c = collisions[1]
@@ -227,6 +226,9 @@ function updateBall()
 			px, _ = paddle:getPosition()
 
 			-- ball position relative to the paddle
+			-- We calculate where at the paddle the ball hit
+			-- to establish how far left/right from the center
+			-- This will be needed to influence the ball's final angle
 			local offset = bx - px
 			local half = (paddleWidthBricks * BRICK) / 2
 
@@ -238,7 +240,9 @@ function updateBall()
 
 			local influence = t * ballPaddleAngleInfluenceFraction
 
-			local newX = baseX + influence
+			local speedInfluence = paddleSpeedCurrent * ballPaddleSpeedInfluenceFraction
+
+			local newX = baseX + influence + speedInfluence
 
 			local len = math.sqrt(newX * newX + baseY * baseY)
 
@@ -312,7 +316,23 @@ end
 
 function updatePaddle()
 	local crank = playdate.getCrankChange()
-	paddleSpeedCurrent = Util.clamp(crank, -paddleSpeedMax, paddleSpeedMax)
+	-- crank will be -x to x
+	-- We want to calculate the fraction of max, min
+	-- and then lerp the current speed gradually towards that value
+	-- This should result in less jiggy speed changes.
+
+	local maxCrank = 50 -- tune this
+
+	crank = Util.clamp(crank, -maxCrank, maxCrank)
+
+	-- signed fraction of max crank, we will use it to calc the speed we aim at
+	local fraction = (math.abs(crank) / maxCrank) * Util.sign(crank)
+
+	local targetSpeed = paddleSpeedMax * fraction
+
+	paddleSpeedCurrent = Util.lerp(paddleSpeedCurrent, targetSpeed, 0.3)
+
+	-- Now actually move the paddle
 	local px, py = paddle:getPosition()
 
 	paddle:moveWithCollisions(px + paddleSpeedCurrent, py)
