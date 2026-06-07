@@ -32,12 +32,14 @@ local ballSpeedIncrease = 0.3
 local ballSpeedCurrent = ballSpeedMin
 local ballSpeedBoost = 0
 local ballBoostPaddleSpeedMin = 5
-local ballSpeedBoostMax = 10
+local ballSpeedBoostMax = 40
 local ballSpeedBoostMin = 0
-local ballSpeedBoostDecrease = 0.3
+local ballSpeedBoostDecrease = 0.05
 
 local ballPaddleAngleInfluenceFraction = 0.8
 local ballPaddleSpeedInfluenceFraction = 0.3
+
+local ballMinScale = 0.7
 
 -- paddle
 
@@ -62,6 +64,7 @@ local lifes
 -- levels
 local levels = import("levels")
 
+local brickOffsetX = 10
 local bricksLeft = 0
 
 function createBrick(x, y, size, strength)
@@ -153,8 +156,9 @@ function createPaddle()
 end
 
 function drawAim()
-	local x = math.cos(aim) * 20
-	local y = math.sin(aim) * 20
+	local paddleLineScale = 5
+	local x = math.cos(aim) * math.abs(paddleSpeedCurrent) * paddleLineScale
+	local y = math.sin(aim) * math.abs(paddleSpeedCurrent) * paddleLineScale
 
 	local px, py = paddle:getPosition()
 
@@ -187,7 +191,7 @@ function loadLevel()
 			elseif tile == "_" then
 				if brickSize > 0 then
 					createBrick(
-						screenBorder.left + brickPosX * BRICK,
+						screenBorder.left + brickOffsetX + brickPosX * BRICK,
 						screenBorder.top + y * BRICK,
 						brickSize,
 						brickStrength
@@ -199,7 +203,7 @@ function loadLevel()
 			elseif tile == "." then
 				if brickSize > 0 then
 					createBrick(
-						screenBorder.left + brickPosX * BRICK,
+						screenBorder.left + brickOffsetX + brickPosX * BRICK,
 						screenBorder.top + y * BRICK,
 						brickSize,
 						brickStrength
@@ -236,14 +240,14 @@ function updateBall()
 
 	ball:markDirty()
 	if ball.scale.x < 1 then
-		ball.scale.x = Util.lerp(ball.scale.x, 1, 0.5)
+		ball.scale.x = Util.lerp(ball.scale.x, 1, ballMinScale)
 	end
 	if ball.scale.y < 1 then
-		ball.scale.y = Util.lerp(ball.scale.y, 1, 0.5)
+		ball.scale.y = Util.lerp(ball.scale.y, 1, ballMinScale)
 	end
 
-	if #collisions > 0 then
-		local c = collisions[1]
+	for i = 1, #collisions do
+		local c = collisions[i]
 		if c.other.type ~= "paddle" then
 			local dot = ballDirection.x * c.normal.x + ballDirection.y * c.normal.y
 
@@ -254,16 +258,17 @@ function updateBall()
 		end
 
 		-- on all collisions:
-		ball.scale = {
-			x = c.normal.x ~= 0 and 0.5 or 1,
-			y = c.normal.y ~= 0 and 0.5 or 1,
-		}
+		if c.normal.x ~= 0 then
+			ball.scale.x = 0.5
+		end
+		if c.normal.y ~= 0 then
+			ball.scale.y = 0.5
+		end
 
 		if c.other.type == "paddle" then
 			local paddleSpeedAbs = math.abs(paddleSpeedCurrent)
 			if paddleSpeedAbs > ballBoostPaddleSpeedMin then
 				ballSpeedBoost = Util.lerp(0, ballSpeedBoostMax, paddleSpeedAbs / (paddleSpeedMax - paddleSpeedAbs))
-				print("PSpeed: " .. paddleSpeedAbs .. " boost: " .. ballSpeedBoost)
 			end
 
 			-- calculating new ball angle
