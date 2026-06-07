@@ -1,5 +1,5 @@
 name=BreakDate
 author=PotatoGameDev
 bundleID=es.potatogam.breakdate
-version=0.7.5
+version=0.9.0
 description=A simple breakout for PlayDate! Uses crank!!!
