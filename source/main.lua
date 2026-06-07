@@ -40,7 +40,7 @@ local ballPaddleAngleInfluenceFraction = 0.8
 local ballPaddleSpeedInfluenceFraction = 0.3
 
 -- paddle
---
+
 local paddleInitialPosition = {
 	x = SCREEN_WIDTH / 2,
 	y = SCREEN_HEIGHT - screenBorder.bottom,
@@ -66,16 +66,27 @@ local bricksLeft = 0
 
 function createBrick(x, y, size, strength)
 	local img = gfx.image.new("images/brick0" .. size)
-	local brick = gfx.sprite.new(img)
+	local brokenImg = gfx.image.new("images/brickbroken0" .. size)
+	local brick = gfx.sprite.new()
+	brick:setSize(size * BRICK, BRICK)
 	brick:add()
 
 	brick:setCollideRect(0, 0, size * BRICK, BRICK)
 	brick:moveTo(x, y)
+	brick.basePos = { x = x, y = y }
 	brick.life = strength
 	brick.type = "brick"
 	brick.size = size
+	brick.broken = false
+
+	brick.shake = { x = 0, y = 0 }
 
 	bricksLeft = bricksLeft + 1
+
+	function brick:draw(x, y, w, h)
+		local currentImg = self.broken and brokenImg or img
+		currentImg:draw(self.shake.x, self.shake.y)
+	end
 
 	return brick
 end
@@ -111,13 +122,20 @@ end
 
 function createPaddle()
 	local img = gfx.image.new("images/paddle" .. paddleWidthBricks)
-	local paddle = gfx.sprite.new(img)
+	local paddle = gfx.sprite.new()
+
 	paddle:add()
 	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
+	paddle:setSize(paddleWidthBricks * BRICK, BRICK)
 
 	paddle:setCollideRect(0, 0, paddleWidthBricks * BRICK, BRICK)
 
 	paddle.type = "paddle"
+	paddle.shake = { x = 0, y = 0 }
+
+	function paddle:draw(x, y, w, h)
+		img:draw(self.shake.x, self.shake.y)
+	end
 
 	return paddle
 end
@@ -257,8 +275,15 @@ function updateBall()
 			local len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
 			ballDirection.x = ballDirection.x / len
 			ballDirection.y = ballDirection.y / len
+
+			-- Paddle shake
+
+			paddle.shake = {
+				x = -c.normal.x * ballSpeedCurrent,
+				y = -c.normal.y * ballSpeedCurrent,
+			}
 		elseif c.other.type == "brick" then
-			hitBrick(c.other)
+			hitBrick(c.other, c.normal, ballSpeedCurrent)
 		elseif c.other.type == "floor" then
 			if lifes == 0 then
 				unloadBricks()
@@ -269,7 +294,7 @@ function updateBall()
 	end
 end
 
-function hitBrick(brick)
+function hitBrick(brick, direction, speed)
 	brick.life = brick.life - 1
 	if brick.life == 0 then
 		brick:remove()
@@ -289,8 +314,12 @@ function hitBrick(brick)
 
 		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
 	else
-		local newImage = gfx.image.new("images/brickbroken0" .. brick.size)
-		brick:setImage(newImage)
+		brick.broken = true
+		--brick:markDirty()
+		brick.shake = {
+			x = -direction.x * speed,
+			y = -direction.y * speed,
+		}
 	end
 end
 
@@ -302,6 +331,30 @@ function unloadBricks()
 
 		if s.type == "brick" then
 			s:remove()
+		end
+	end
+end
+
+function updateBricks()
+	local allSprites = gfx.sprite.getAllSprites()
+
+	for i = 1, #allSprites do
+		local s = allSprites[i]
+
+		if s.type == "brick" then
+			if s.shake.x ~= 0 or s.shake.y ~= 0 then
+				s:markDirty()
+
+				s.shake.x = s.shake.x * 0.7
+				s.shake.y = s.shake.y * 0.7
+
+				if math.abs(s.shake.x) < 0.5 then
+					s.shake.x = 0
+				end
+				if math.abs(s.shake.y) < 0.5 then
+					s.shake.y = 0
+				end
+			end
 		end
 	end
 end
@@ -339,12 +392,19 @@ function updatePaddle()
 	local px, py = paddle:getPosition()
 
 	paddle:moveWithCollisions(px + paddleSpeedCurrent, py)
+
+	-- clearing shake
+
+	paddle.shake.x = paddle.shake.x * 0.7
+	paddle.shake.y = paddle.shake.y * 0.7
 end
 
 function playdate.update()
 	updatePaddle()
 
 	updateBall()
+
+	updateBricks()
 
 	aim = aim + math.rad(playdate.getCrankChange())
 	aim = Util.clamp(aim, math.pi, math.pi * 2)
