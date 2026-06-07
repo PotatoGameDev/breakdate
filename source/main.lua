@@ -53,10 +53,10 @@ local paddleSpeedCurrent = paddleSpeedMin
 
 -- UI
 
-local score = 1
-local highscore = 1
-local currentLevel = 1
-local lives = 3
+local score
+local highscore = playdate.datastore.read("highscore") or 0
+local currentLevel
+local lives
 
 -- levels
 local levels = import("levels")
@@ -140,6 +140,8 @@ function loadLevel()
 
 	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
 	ball:moveTo(paddleInitialPosition.x, paddleInitialPosition.y - 2 * BRICK)
+
+	bricksLeft = 0
 
 	for y, row in ipairs(level) do
 		local brickPosX = 0
@@ -253,6 +255,9 @@ function updateBall()
 			ballDirection.y = ballDirection.y / len
 		elseif c.other.type == "brick" then
 			hitBrick(c.other)
+		elseif c.other.type == "floor" then
+			unloadBricks()
+			startGame()
 		end
 	end
 end
@@ -267,6 +272,7 @@ function hitBrick(brick)
 
 		if score > highscore then
 			highscore = score
+			playdate.datastore.write("highscore")
 		end
 
 		if bricksLeft == 0 then
@@ -276,6 +282,25 @@ function hitBrick(brick)
 
 		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
 	end
+end
+
+function unloadBricks()
+	local allSprites = gfx.sprite.getAllSprites()
+
+	for i = 1, #allSprites do
+		local s = allSprites[i]
+
+		if s.type == "brick" then
+			s:remove()
+		end
+	end
+end
+
+function startGame()
+	lives = 3
+	score = 1
+	currentLevel = 1
+	loadLevel()
 end
 
 function updatePaddle()
@@ -308,4 +333,5 @@ createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize)
 
 paddle = createPaddle()
 ball = createBall()
-loadLevel()
+
+startGame()
