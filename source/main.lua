@@ -56,7 +56,7 @@ local paddleSpeedCurrent = paddleSpeedMin
 local score
 local highscore = playdate.datastore.read("highscore") or 0
 local currentLevel
-local lives
+local lifes
 
 -- levels
 local levels = import("levels")
@@ -79,7 +79,7 @@ function createBrick(x, y, size, strength)
 	return brick
 end
 
-function createWall(x, y, w, h)
+function createWall(x, y, w, h, type)
 	local wallImg = gfx.image.new(w, h)
 
 	gfx.pushContext(wallImg)
@@ -91,7 +91,7 @@ function createWall(x, y, w, h)
 	wall:moveTo(x, y)
 	wall:add()
 
-	wall.type = "wall"
+	wall.type = type or "wall"
 
 	return wall
 end
@@ -185,7 +185,7 @@ end
 function drawUi()
 	local uiLineY = 3
 	gfx.drawText(currentLevel, 50, uiLineY)
-	gfx.drawText(lives, 150, uiLineY + 5)
+	gfx.drawText(lifes, 150, uiLineY + 5)
 	gfx.drawText(score, 250, uiLineY)
 	gfx.drawText(highscore, 350, uiLineY + 5)
 end
@@ -256,8 +256,11 @@ function updateBall()
 		elseif c.other.type == "brick" then
 			hitBrick(c.other)
 		elseif c.other.type == "floor" then
-			unloadBricks()
-			startGame()
+			if lifes == 0 then
+				unloadBricks()
+				startGame()
+			end
+			lifes = lifes - 1
 		end
 	end
 end
@@ -297,9 +300,13 @@ function unloadBricks()
 end
 
 function startGame()
-	lives = 3
+	lifes = 3
 	score = 1
 	currentLevel = 1
+
+	ballSpeedCurrent = ballSpeedMin
+	paddleSpeedCurrent = paddleSpeedMin
+
 	loadLevel()
 end
 
@@ -329,7 +336,7 @@ end
 createWall(0, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
 createWall(SCREEN_WIDTH, SCREEN_HEIGHT / 2, wallSize, SCREEN_HEIGHT)
 createWall(SCREEN_WIDTH / 2, screenBorder.top, SCREEN_WIDTH, wallSize)
-createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize)
+createWall(SCREEN_WIDTH / 2, SCREEN_HEIGHT, SCREEN_WIDTH, wallSize, "floor")
 
 paddle = createPaddle()
 ball = createBall()
