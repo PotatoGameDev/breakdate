@@ -11,6 +11,36 @@ local aim = 0
 
 BRICK = 16
 
+-- music
+local music
+
+local currentSound
+
+local brickHitSound = playdate.sound.sampleplayer.new("sounds/brick_hit")
+local brickCrushSound = playdate.sound.sampleplayer.new("sounds/brick_crush")
+local glassCrushSound = playdate.sound.sampleplayer.new("sounds/glass_crush")
+local missSound = playdate.sound.sampleplayer.new("sounds/miss")
+local nextLevelSound = playdate.sound.sampleplayer.new("sounds/next_level")
+local paddleHitSound = playdate.sound.sampleplayer.new("sounds/paddle_hit")
+local wallHitSound = playdate.sound.sampleplayer.new("sounds/wall_hit")
+
+function playSound(sound, randomPitch, addedPitch)
+	addedPitch = addedPitch or 0.0
+	local pitch = 1.0
+	if randomPitch then
+		pitch = 0.9 + math.random() * 0.2
+	elseif addedPitch > 0.0 then
+		pitch = 1.0 + addedPitch
+	end
+	if currentSound then
+		currentSound:stop()
+	end
+
+	currentSound = sound
+	currentSound:play()
+	currentSound:setRate(pitch)
+end
+
 -- logo
 
 local logo
@@ -82,6 +112,7 @@ function createBrick(x, y, size, strength)
 	brick:moveTo(x, y)
 	brick.basePos = { x = x, y = y }
 	brick.life = strength
+	brick.strength = strength
 	brick.type = "brick"
 	brick.size = size
 	brick.broken = false
@@ -176,13 +207,19 @@ function showLogo()
 	logo = gfx.sprite.new(img)
 
 	logo.type = "logo"
-	logo.frames = 90
+	logo.frames = 1200
 
 	local w, h = img:getSize()
 	logo:setSize(w, h)
 	logo:moveTo(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
 
 	logo:add()
+
+	if music then
+		music:stop()
+	end
+	music = playdate.sound.fileplayer.new("sounds/menu")
+	music:play(0)
 end
 
 function loadLevel()
@@ -190,6 +227,12 @@ function loadLevel()
 		currentLevel = 1
 	end
 	local level = levels[currentLevel]
+
+	if music then
+		music:stop()
+	end
+	music = playdate.sound.fileplayer.new("sounds/gameplay")
+	music:play(0)
 
 	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
 	ball:moveTo(paddleInitialPosition.x, paddleInitialPosition.y - 2 * BRICK)
@@ -243,6 +286,24 @@ function drawUi()
 	gfx.drawText("HI: " .. highscore, 350, uiLineY + 5)
 end
 
+function anyButtonJustPressed()
+	local buttons = {
+		playdate.kButtonA,
+		playdate.kButtonB,
+		playdate.kButtonUp,
+		playdate.kButtonDown,
+		playdate.kButtonLeft,
+		playdate.kButtonRight,
+	}
+
+	for _, button in ipairs(buttons) do
+		if playdate.buttonJustPressed(button) then
+			return true
+		end
+	end
+	return false
+end
+
 -- UPDATE
 
 function updateBall()
@@ -285,9 +346,13 @@ function updateBall()
 
 		if c.other.type == "paddle" then
 			local paddleSpeedAbs = math.abs(paddleSpeedCurrent)
+			local soundPitchIncrease = 0.0
 			if paddleSpeedAbs > ballBoostPaddleSpeedMin then
 				ballSpeedBoost = Util.lerp(0, ballSpeedBoostMax, paddleSpeedAbs / (paddleSpeedMax - paddleSpeedAbs))
+				soundPitchIncrease = Util.clamp(paddleSpeedAbs / paddleSpeedMax, 0.0, 1.0)
 			end
+
+			playSound(paddleHitSound, false, soundPitchIncrease)
 
 			-- calculating new ball angle
 			px, _ = paddle:getPosition()
@@ -338,7 +403,10 @@ function updateBall()
 				unloadBricks()
 				startGame()
 			end
+			playSound(missSound)
 			lifes = lifes - 1
+		elseif c.other.type == "wall" then
+			playSound(wallHitSound, true)
 		end
 	end
 end
@@ -346,6 +414,12 @@ end
 function hitBrick(brick, direction, speed)
 	brick.life = brick.life - 1
 	if brick.life == 0 then
+		if brick.strength == 2 then
+			playSound(brickCrushSound, true)
+		else
+			playSound(glassCrushSound, true)
+		end
+
 		brick:remove()
 		bricksLeft = bricksLeft - 1
 
@@ -358,11 +432,14 @@ function hitBrick(brick, direction, speed)
 
 		if bricksLeft == 0 then
 			currentLevel = currentLevel + 1
+			playSound(nextLevelSound)
 			loadLevel()
 		end
 
 		ballSpeedCurrent = Util.clamp(ballSpeedCurrent + ballSpeedIncrease, ballSpeedMin, ballSpeedMax)
 	else
+		playSound(brickHitSound, true)
+
 		brick.broken = true
 		brick:markDirty()
 		brick.shake = {
@@ -459,15 +536,14 @@ function updatePaddle()
 end
 
 function playdate.update()
+	if logo and (anyButtonJustPressed() or logo.frames <= 0) then
+		logo:remove()
+		logo = nil
+		createPersistentObjects()
+		startGame()
+	end
 	if logo then
-		if logo.frames > 0 then
-			logo.frames = logo.frames - 1
-		else
-			logo:remove()
-			logo = nil
-			createPersistentObjects()
-			startGame()
-		end
+		logo.frames = logo.frames - 1
 		gfx.sprite.update()
 	else
 		updatePaddle()
