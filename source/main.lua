@@ -62,16 +62,18 @@ local ballDirection = { x = 1, y = -1 }
 
 local ballSpeedMin = 3
 local ballSpeedMax = 10
-local ballSpeedIncrease = 0.3
+local ballSpeedIncrease = 0.0
 local ballSpeedCurrent = ballSpeedMin
 local ballSpeedBoost = 0
 local ballBoostPaddleSpeedMin = 5
 local ballSpeedBoostMax = 40
 local ballSpeedBoostMin = 0
-local ballSpeedBoostDecrease = 0.05
+local ballSpeedBoostDecrease = 0.1
 
-local ballPaddleAngleInfluenceFraction = 0.8
-local ballPaddleSpeedInfluenceFraction = 0.3
+local ballPaddleAngleInfluenceFraction = 1.0
+local ballPaddleSpeedInfluenceFraction = 0.05
+
+local ballDoubleDamageSpeed = 4.0
 
 local ballMinScale = 0.7
 
@@ -202,24 +204,34 @@ end
 
 -- LOAD
 
-function showLogo()
-	local img = gfx.image.new("images/logo")
+function showLogo(image)
+	local number = 0
+	if logo then
+		number = logo.number
+	end
+
+	if not logo then
+		if music then
+			music:stop()
+		end
+		music = playdate.sound.fileplayer.new("sounds/menu")
+		music:play(0)
+	else
+		logo:remove()
+	end
+
+	local img = gfx.image.new(image)
 	logo = gfx.sprite.new(img)
 
 	logo.type = "logo"
 	logo.frames = 1200
+	logo.number = number + 1
 
 	local w, h = img:getSize()
 	logo:setSize(w, h)
 	logo:moveTo(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
 
 	logo:add()
-
-	if music then
-		music:stop()
-	end
-	music = playdate.sound.fileplayer.new("sounds/menu")
-	music:play(0)
 end
 
 function loadLevel()
@@ -307,15 +319,13 @@ end
 -- UPDATE
 
 function updateBall()
-	local dx = ballDirection.x * (ballSpeedCurrent + ballSpeedBoost)
-	local dy = ballDirection.y * (ballSpeedCurrent + ballSpeedBoost)
+	local ballTotalSpeed = ballSpeedCurrent + ballSpeedBoost
+	local dx = ballDirection.x * ballTotalSpeed
+	local dy = ballDirection.y * ballTotalSpeed
 
 	local bx, by = ball:getPosition()
 
 	local actualX, actualY, collisions = ball:moveWithCollisions(bx + dx, by + dy)
-
-	-- cooling down the speed boost
-	ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
 
 	ball:markDirty()
 	if ball.scale.x < 1 then
@@ -328,11 +338,20 @@ function updateBall()
 	for i = 1, #collisions do
 		local c = collisions[i]
 		if c.other.type ~= "paddle" then
-			local dot = ballDirection.x * c.normal.x + ballDirection.y * c.normal.y
+			local ignore = false
+			if c.other.type == "brick" then
+				if ballTotalSpeed > ballDoubleDamageSpeed and c.other.life <= 1 then
+					ignore = true
+				end
+			end
 
-			if dot ~= 0 then
-				ballDirection.x = ballDirection.x - 2 * dot * c.normal.x
-				ballDirection.y = ballDirection.y - 2 * dot * c.normal.y
+			if not ignore then
+				local dot = ballDirection.x * c.normal.x + ballDirection.y * c.normal.y
+
+				if dot ~= 0 then
+					ballDirection.x = ballDirection.x - 2 * dot * c.normal.x
+					ballDirection.y = ballDirection.y - 2 * dot * c.normal.y
+				end
 			end
 		end
 
@@ -345,10 +364,12 @@ function updateBall()
 		end
 
 		if c.other.type == "paddle" then
+			ballSpeedBoost = 0.0
 			local paddleSpeedAbs = math.abs(paddleSpeedCurrent)
 			local soundPitchIncrease = 0.0
 			if paddleSpeedAbs > ballBoostPaddleSpeedMin then
-				ballSpeedBoost = Util.lerp(0, ballSpeedBoostMax, paddleSpeedAbs / (paddleSpeedMax - paddleSpeedAbs))
+				local boostFraction = Util.clamp(paddleSpeedAbs / paddleSpeedMax, 0.0, 1.0)
+				ballSpeedBoost = Util.lerp(0, ballSpeedBoostMax, boostFraction)
 				soundPitchIncrease = Util.clamp(paddleSpeedAbs / paddleSpeedMax, 0.0, 1.0)
 			end
 
@@ -367,28 +388,37 @@ function updateBall()
 			local t = offset / half
 			t = Util.clamp(t, -1, 1)
 
-			local baseX = ballDirection.x
-			local baseY = ballDirection.y
+			local dirSign = Util.sign(paddleSpeedCurrent)
 
-			local influence = t * ballPaddleAngleInfluenceFraction
+			local effectiveT = t
+			if dirSign ~= 0 and Util.sign(t) ~= 0 and Util.sign(t) ~= dirSign then
+				effectiveT = 0
+			end
 
+			--local baseX = ballDirection.x
+			--local baseY = ballDirection.y
+			local baseX = 0
+			local baseY = -1
+
+			local influence = effectiveT * ballPaddleAngleInfluenceFraction
 			local speedInfluence = paddleSpeedCurrent * ballPaddleSpeedInfluenceFraction
 
 			local newX = baseX + influence + speedInfluence
+			local newY = baseY
 
-			local len = math.sqrt(newX * newX + baseY * baseY)
+			local len = math.sqrt(newX * newX + newY * newY)
 
 			ballDirection.x = newX / len
-			ballDirection.y = baseY / len
+			ballDirection.y = newY / len
 
 			-- check if the ball goes up:
 			if ballDirection.y > -0.2 then
 				ballDirection.y = -0.2
-			end
 
-			len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
-			ballDirection.x = ballDirection.x / len
-			ballDirection.y = ballDirection.y / len
+				len = math.sqrt(ballDirection.x ^ 2 + ballDirection.y ^ 2)
+				ballDirection.x = ballDirection.x / len
+				ballDirection.y = ballDirection.y / len
+			end
 
 			-- Paddle shake
 
@@ -397,8 +427,9 @@ function updateBall()
 				y = -c.normal.y * ballSpeedCurrent,
 			}
 		elseif c.other.type == "brick" then
-			hitBrick(c.other, c.normal, ballSpeedCurrent)
+			hitBrick(c.other, c.normal, ballTotalSpeed)
 		elseif c.other.type == "floor" then
+			ballSpeedBoost = 0.0
 			if lifes == 0 then
 				unloadBricks()
 				startGame()
@@ -406,14 +437,26 @@ function updateBall()
 			playSound(missSound)
 			lifes = lifes - 1
 		elseif c.other.type == "wall" then
+			-- cooling down the speed boost
+			ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
 			playSound(wallHitSound, true)
 		end
 	end
 end
 
 function hitBrick(brick, direction, speed)
-	brick.life = brick.life - 1
-	if brick.life == 0 then
+	local damage = 1
+	if speed > ballDoubleDamageSpeed then
+		damage = speed - ballDoubleDamageSpeed
+	end
+
+	-- cooling down the speed boost
+	local cooldownAmount = Util.clamp(ballSpeedBoostDecrease * damage, 0.0, 1.0)
+	ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, cooldownAmount)
+
+	brick.life = brick.life - damage
+
+	if brick.life <= 0 then
 		if brick.strength == 2 then
 			playSound(brickCrushSound, true)
 		else
@@ -537,10 +580,14 @@ end
 
 function playdate.update()
 	if logo and (anyButtonJustPressed() or logo.frames <= 0) then
-		logo:remove()
-		logo = nil
-		createPersistentObjects()
-		startGame()
+		if logo.number == 2 then
+			logo:remove()
+			logo = nil
+			createPersistentObjects()
+			startGame()
+		else
+			showLogo("images/logo_qr")
+		end
 	end
 	if logo then
 		logo.frames = logo.frames - 1
@@ -563,4 +610,4 @@ function playdate.update()
 	end
 end
 
-showLogo()
+showLogo("images/logo")
