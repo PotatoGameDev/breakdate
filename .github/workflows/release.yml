@@ -1,0 +1,114 @@
+name: Release
+
+# Triggers on any tag push, e.g. `git tag v1.0.0 && git push origin v1.0.0`
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  GAME_NAME: BreakDate
+  SOURCE_DIR: source
+  ITCH_TARGET: bigpotatoeski/breakdate
+
+  PLAYDATE_SDK_VERSION: "3.0.6"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build .pdx
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Cache Playdate SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: PlaydateSDK
+          key: playdate-sdk-${{ env.PLAYDATE_SDK_VERSION }}-linux
+
+      - name: Download Playdate SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o playdate_sdk.tar.gz \
+            "https://download.panic.com/playdate_sdk/Linux/PlaydateSDK-${PLAYDATE_SDK_VERSION}.tar.gz"
+          mkdir -p PlaydateSDK
+          tar -xzf playdate_sdk.tar.gz -C PlaydateSDK --strip-components=1
+
+      - name: Install SDK runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-37 libgtk-3-0 || true
+
+      - name: Build .pdx
+        env:
+          PLAYDATE_SDK_PATH: ${{ github.workspace }}/PlaydateSDK
+        run: |
+          chmod +x "$PLAYDATE_SDK_PATH/bin/pdc"
+          "$PLAYDATE_SDK_PATH/bin/pdc" "$SOURCE_DIR" "$GAME_NAME.pdx"
+
+      - name: Zip build for sideloading
+        run: |
+          zip -r "${GAME_NAME}.pdx.zip" "${GAME_NAME}.pdx"
+
+      - name: Upload sideload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdx-zip
+          path: ${{ env.GAME_NAME }}.pdx.zip
+
+      - name: Upload raw .pdx artifact (for itch.io)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdx-raw
+          path: ${{ env.GAME_NAME }}.pdx
+
+  publish-github:
+    name: Create GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download sideload zip
+        uses: actions/download-artifact@v4
+        with:
+          name: pdx-zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.GAME_NAME }}.pdx.zip
+          generate_release_notes: true
+
+  publish-itch:
+    name: Publish to itch.io
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download raw .pdx build
+        uses: actions/download-artifact@v4
+        with:
+          name: pdx-raw
+          path: build/${{ env.GAME_NAME }}.pdx
+
+      - name: Setup butler
+        uses: remarkablegames/setup-butler@v3
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=0.0.0-${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push to itch.io
+        run: butler push "build/${GAME_NAME}.pdx" "${ITCH_TARGET}:playdate" --userversion ${{ steps.version.outputs.version }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
