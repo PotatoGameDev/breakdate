@@ -5,11 +5,11 @@
 -- .  ends a brick without adding a gap (splits touching bricks of the same strength)
 -- Rows are at most 23 cells wide.
 return {
-	[2] = {
+	[1] = {
 		"11_11_11_11_11_11_11_11_",
 		"_11_11_11_11_11_11_11_11_",
 	},
-	[1] = {
+	[2] = {
 		"__1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1",
 		"",
 		"",
