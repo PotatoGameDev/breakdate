@@ -93,9 +93,10 @@ local paddleSpeedCurrent = paddleSpeedMin
 -- UI
 
 local score
-local highscore = playdate.datastore.read("highscore") or 0
+local saveData = playdate.datastore.read("highscore")
+local highscore = (saveData and saveData.highscore) or 0
 local currentLevel
-local lifes
+local lives
 
 -- levels
 local levels = import("levels")
@@ -215,6 +216,7 @@ function showLogo(image)
 			music:stop()
 		end
 		music = playdate.sound.fileplayer.new("sounds/menu")
+		music:setVolume(0.3)
 		music:play(0)
 	else
 		logo:remove()
@@ -244,6 +246,7 @@ function loadLevel()
 		music:stop()
 	end
 	music = playdate.sound.fileplayer.new("sounds/gameplay")
+	music:setVolume(0.3)
 	music:play(0)
 
 	paddle:moveTo(paddleInitialPosition.x, paddleInitialPosition.y)
@@ -293,7 +296,7 @@ end
 function drawUi()
 	local uiLineY = 3
 	gfx.drawText("LEVEL: " .. currentLevel, 50, uiLineY)
-	gfx.drawText("LIFES: " .. lifes, 150, uiLineY + 5)
+	gfx.drawText("LIVES: " .. lives, 150, uiLineY + 5)
 	gfx.drawText("SCORE: " .. score, 250, uiLineY)
 	gfx.drawText("HI: " .. highscore, 350, uiLineY + 5)
 end
@@ -429,13 +432,14 @@ function updateBall()
 		elseif c.other.type == "brick" then
 			hitBrick(c.other, c.normal, ballTotalSpeed)
 		elseif c.other.type == "floor" then
+			playSound(missSound)
 			ballSpeedBoost = 0.0
-			if lifes == 0 then
+			if lives == 0 then
 				unloadBricks()
 				startGame()
+			else
+				lives = lives - 1
 			end
-			playSound(missSound)
-			lifes = lifes - 1
 		elseif c.other.type == "wall" then
 			-- cooling down the speed boost
 			ballSpeedBoost = Util.lerp(ballSpeedBoost, ballSpeedBoostMin, ballSpeedBoostDecrease)
@@ -470,7 +474,7 @@ function hitBrick(brick, direction, speed)
 
 		if score > highscore then
 			highscore = score
-			playdate.datastore.write("highscore")
+			playdate.datastore.write({ highscore = highscore }, "highscore")
 		end
 
 		if bricksLeft == 0 then
@@ -529,8 +533,8 @@ function updateBricks()
 end
 
 function startGame()
-	lifes = 3
-	score = 1
+	lives = 2
+	score = 0
 	currentLevel = 1
 
 	ballSpeedCurrent = ballSpeedMin
@@ -549,19 +553,18 @@ function createPersistentObjects()
 	ball = createBall()
 end
 
-function updatePaddle()
-	local crank = playdate.getCrankChange()
-	-- crank will be -x to x
+function updatePaddle(crankChange)
+	-- crankChange will be -x to x
 	-- We want to calculate the fraction of max, min
 	-- and then lerp the current speed gradually towards that value
 	-- This should result in less jiggy speed changes.
 
 	local maxCrank = 50 -- tune this
 
-	crank = Util.clamp(crank, -maxCrank, maxCrank)
+	crankChange = Util.clamp(crankChange, -maxCrank, maxCrank)
 
-	-- signed fraction of max crank, we will use it to calc the speed we aim at
-	local fraction = (math.abs(crank) / maxCrank) * Util.sign(crank)
+	-- signed fraction of max crankChange, we will use it to calc the speed we aim at
+	local fraction = (math.abs(crankChange) / maxCrank) * Util.sign(crankChange)
 
 	local targetSpeed = paddleSpeedMax * fraction
 
@@ -579,6 +582,10 @@ function updatePaddle()
 end
 
 function playdate.update()
+	-- We have to cache this because getCrankChange returns the value since
+	-- the last call... The second call will return 0...
+	local crankChange = playdate.getCrankChange()
+
 	if logo and (anyButtonJustPressed() or logo.frames <= 0) then
 		if logo.number == 2 then
 			logo:remove()
@@ -593,13 +600,13 @@ function playdate.update()
 		logo.frames = logo.frames - 1
 		gfx.sprite.update()
 	else
-		updatePaddle()
+		updatePaddle(crankChange)
 
 		updateBall()
 
 		updateBricks()
 
-		aim = aim + math.rad(playdate.getCrankChange())
+		aim = aim + math.rad(crankChange)
 		aim = Util.clamp(aim, math.pi, math.pi * 2)
 
 		gfx.sprite.update()
