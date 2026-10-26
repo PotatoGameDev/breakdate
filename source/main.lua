@@ -136,7 +136,7 @@ function createWall(x, y, w, h, type)
 	local wallImg = gfx.image.new(w, h)
 
 	gfx.pushContext(wallImg)
-	gfx.fillRect(0, 0, w, h)
+	--gfx.fillRect(0, 0, w, h)
 	gfx.popContext()
 
 	local wall = gfx.sprite.new(wallImg)
@@ -255,41 +255,46 @@ function loadLevel()
 	bricksLeft = 0
 
 	for y, row in ipairs(level) do
-		local brickPosX = 0
+		local cell = 0
+		local startCell = 0
 		local brickSize = 0
 		local brickStrength = 0
+
+		local function flush()
+			if brickSize > 0 then
+				createBrick(
+					screenBorder.left + brickOffsetX + startCell * BRICK,
+					screenBorder.top + y * BRICK,
+					brickSize,
+					brickStrength
+				)
+			end
+			brickSize = 0
+			brickStrength = 0
+		end
 
 		for x = 1, #row do
 			local tile = row:sub(x, x)
 			if tile == "1" or tile == "2" then
+				local strength = tonumber(tile)
+				if brickSize > 0 and strength ~= brickStrength then
+					flush()
+				end
+				if brickSize == 0 then
+					startCell = cell
+				end
 				brickSize = brickSize + 1
-				brickStrength = tonumber(tile) or 1
+				brickStrength = strength
+				cell = cell + 1
 			elseif tile == "_" then
-				if brickSize > 0 then
-					createBrick(
-						screenBorder.left + brickOffsetX + brickPosX * BRICK,
-						screenBorder.top + y * BRICK,
-						brickSize,
-						brickStrength
-					)
-				end
-				brickSize = 0
-				brickPosX = x
-				brickStrength = 0
+				flush()
+				cell = cell + 1
 			elseif tile == "." then
-				if brickSize > 0 then
-					createBrick(
-						screenBorder.left + brickOffsetX + brickPosX * BRICK,
-						screenBorder.top + y * BRICK,
-						brickSize,
-						brickStrength
-					)
-				end
-				brickSize = 0
-				brickPosX = x - 1
-				brickStrength = 0
+				flush()
 			end
 		end
+
+		flush()
 	end
 end
 
@@ -351,7 +356,7 @@ function updateBall()
 			if not ignore then
 				local dot = ballDirection.x * c.normal.x + ballDirection.y * c.normal.y
 
-				if dot ~= 0 then
+				if dot <= 0 then
 					ballDirection.x = ballDirection.x - 2 * dot * c.normal.x
 					ballDirection.y = ballDirection.y - 2 * dot * c.normal.y
 				end
@@ -379,7 +384,7 @@ function updateBall()
 			playSound(paddleHitSound, false, soundPitchIncrease)
 
 			-- calculating new ball angle
-			px, _ = paddle:getPosition()
+			local px, _ = paddle:getPosition()
 
 			-- ball position relative to the paddle
 			-- We calculate where at the paddle the ball hit
